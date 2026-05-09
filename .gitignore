@@ -1,0 +1,18 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Training outputs
+models/
+run/
+runs/
+
+# Logs and temporary files
+*.log
+*.tmp
+.DS_Store

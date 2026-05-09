@@ -1,0 +1,99 @@
+<mujoco model="lift object scene">
+    
+  <option timestep="0.002" gravity="0 0 -9.81" noslip_iterations="3"/>
+    
+    <include file="robot.xml"/>
+
+
+    <default>
+        <geom solref="0.001 1" solimp="0.99 0.99 0.001"/>
+    </default>
+
+    <visual>
+      <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+      <rgba haze="0.15 0.25 0.35 1"/>
+      <global azimuth="120" elevation="-20"/>
+    </visual>
+  
+    <asset>
+      <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+      <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+      <material name="groundplane" reflectance="0." texture="texplane" texrepeat="1 1" texuniform="true"/>
+      <material name="cube_material" rgba="0.8 0.2 0.2 1"/>
+      <material name="triangle_material" rgba="0.2 0.8 0.2 1"/>
+      <material name="cylinder_material" rgba="0.2 0.2 0.8 1"/>
+
+      <mesh name="triangle_mesh" file="triangle.stl" scale="0.001 0.001 0.001"/>
+      <mesh name="cylinder_mesh" file="cylinder.stl" scale="0.001 0.001 0.001"/>
+    </asset>
+  
+    <worldbody>
+      <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+      <camera
+          name="record_camera"
+          pos="0.55 -0.45 0.5"
+          xyaxes="0.65 0.76 0.00 -0.35 0.30 0.89"
+      />
+      <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+  
+      <body name="target_body" pos="0. 0. 0.">
+        <site name="target" pos="0.3 0.0 0.2" size=".01 .01 .01" rgba="1 0.0 0.0 1" type="sphere"/>
+      </body>
+
+      <body name="ee_frame_vis" mocap="true" pos="0 0 0" quat="1 0 0 0">
+        <geom name="ee_frame_origin" type="sphere" size="0.004" rgba="1 1 1 0.95" contype="0" conaffinity="0"/>
+        <geom name="ee_frame_x" type="capsule" fromto="0 0 0 0.05 0 0" size="0.0018" rgba="1 0.15 0.15 0.95" contype="0" conaffinity="0"/>
+        <geom name="ee_frame_y" type="capsule" fromto="0 0 0 0 0.05 0" size="0.0018" rgba="0.15 1 0.15 0.95" contype="0" conaffinity="0"/>
+        <geom name="ee_frame_z" type="capsule" fromto="0 0 0 0 0 0.05" size="0.0018" rgba="0.2 0.4 1 0.95" contype="0" conaffinity="0"/>
+      </body>
+
+      <body name="object_frame_vis" mocap="true" pos="0 0 0" quat="1 0 0 0">
+        <geom name="object_frame_origin" type="sphere" size="0.0045" rgba="1 1 1 0.95" contype="0" conaffinity="0"/>
+        <geom name="object_frame_x" type="capsule" fromto="0 0 0 0.045 0 0" size="0.0015" rgba="1 0.35 0.35 0.85" contype="0" conaffinity="0"/>
+        <geom name="object_frame_y" type="capsule" fromto="0 0 0 0 0.045 0" size="0.0015" rgba="0.35 1 0.35 0.85" contype="0" conaffinity="0"/>
+        <geom name="object_frame_z" type="capsule" fromto="0 0 0 0 0 0.045" size="0.0015" rgba="0.35 0.55 1 0.85" contype="0" conaffinity="0"/>
+      </body>
+
+      <body name="target_frame_vis" mocap="true" pos="0 0 0" quat="1 0 0 0">
+        <geom name="target_frame_origin" type="sphere" size="0.005" rgba="1 0.9 0.1 0.95" contype="0" conaffinity="0"/>
+        <geom name="target_frame_x" type="capsule" fromto="0 0 0 0.06 0 0" size="0.0014" rgba="1 0.45 0.45 0.7" contype="0" conaffinity="0"/>
+        <geom name="target_frame_y" type="capsule" fromto="0 0 0 0 0.06 0" size="0.0014" rgba="0.45 1 0.45 0.7" contype="0" conaffinity="0"/>
+        <geom name="target_frame_z" type="capsule" fromto="0 0 0 0 0 0.06" size="0.0014" rgba="0.45 0.6 1 0.7" contype="0" conaffinity="0"/>
+      </body>
+  
+      <!-- BOX -->
+      <body name="obj_box" pos="0.20 0.00 0.015">
+        <freejoint name="obj_box_joint"/>
+        <geom name="obj_box_geom"
+              type="box"
+              size="0.015 0.015 0.015"
+              mass="0.03"
+              material="cube_material"/>
+        <site name="obj_box_ref" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0.5 0.5 1" type="sphere"/>
+      </body>
+
+      <!-- TRIANGLE -->
+      <!-- <body name="obj_triangle" pos="0.20 0.00 0.025">
+        <freejoint name="obj_triangle_joint"/>
+        <geom name="obj_triangle_geom"
+              type="mesh"
+              mesh="triangle_mesh"
+              mass="0.03"
+              material="triangle_material"/>
+        <site name="obj_triangle_ref" pos="0 0 0.015" size="0.01 0.01 0.01" rgba="0.5 1 0.5 1" type="sphere"/>
+      </body> -->
+
+      <!-- CYLINDER -->
+      <!-- <body name="obj_cylinder" pos="0.20 0.00 0.025">
+        <freejoint name="obj_cylinder_joint"/>
+        <geom name="obj_cylinder_geom"
+              type="mesh"
+              mesh="cylinder_mesh"
+              mass="0.03"
+              material="cylinder_material"/>
+        <site name="obj_cylinder_ref" pos="0 0 0.015" size="0.01 0.01 0.01" rgba="0.5 0.5 1 1" type="sphere"/>
+      </body> -->
+
+    </worldbody>
+
+  </mujoco>

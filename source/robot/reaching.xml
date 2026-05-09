@@ -1,0 +1,107 @@
+<mujoco model="reaching scene">
+  <option timestep="0.002" gravity="0 0 -9.81" noslip_iterations="3"/>
+
+  <include file="robot.xml"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="120" elevation="-20"/>
+  </visual>
+
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <camera
+      name="watching"
+      pos="1.669 -1.154 1.019"
+      xyaxes="0.644 0.765 0.000 -0.250 0.210 0.945"
+    />
+
+    <body name="target_body" pos="0.22 0.0 0.015" quat="1 0 0 0">
+      <site
+        name="target"
+        pos="0 0 0"
+        quat="1 0 0 0"
+        size="0.008 0.008 0.008"
+        rgba="1 0.9 0.1 0.9"
+        type="sphere"
+      />
+    </body>
+
+    <body name="ee_frame_vis" mocap="true" pos="0 0 0" quat="1 0 0 0">
+      <geom
+        name="ee_frame_origin"
+        type="sphere"
+        size="0.004"
+        rgba="1 1 1 0.95"
+        contype="0"
+        conaffinity="0"
+      />
+      <geom
+        name="ee_frame_x"
+        type="capsule"
+        fromto="0 0 0 0.05 0 0"
+        size="0.0018"
+        rgba="1 0.15 0.15 0.95"
+        contype="0"
+        conaffinity="0"
+      />
+      <geom
+        name="ee_frame_y"
+        type="capsule"
+        fromto="0 0 0 0 0.05 0"
+        size="0.0018"
+        rgba="0.15 1 0.15 0.95"
+        contype="0"
+        conaffinity="0"
+      />
+      <geom
+        name="ee_frame_z"
+        type="capsule"
+        fromto="0 0 0 0 0 0.05"
+        size="0.0018"
+        rgba="0.2 0.4 1 0.95"
+        contype="0"
+        conaffinity="0"
+      />
+    </body>
+
+    <body name="target_frame_vis" mocap="true" pos="0 0 0" quat="1 0 0 0">
+      <geom
+        name="target_frame_origin"
+        type="sphere"
+        size="0.005"
+        rgba="1 0.9 0.1 0.95"
+        contype="0"
+        conaffinity="0"
+      />
+      <geom
+        name="target_frame_x"
+        type="capsule"
+        fromto="0 0 0 0.06 0 0"
+        size="0.0014"
+        rgba="1 0.45 0.45 0.7"
+        contype="0"
+        conaffinity="0"
+      />
+      <geom
+        name="target_frame_y"
+        type="capsule"
+        fromto="0 0 0 0 0.06 0"
+        size="0.0014"
+        rgba="0.45 1 0.45 0.7"
+        contype="0"
+        conaffinity="0"
+      />
+      <geom
+        name="target_frame_z"
+        type="capsule"
+        fromto="0 0 0 0 0 0.06"
+        size="0.0014"
+        rgba="0.45 0.6 1 0.7"
+        contype="0"
+        conaffinity="0"
+      />
+    </body>
+  </worldbody>
+</mujoco>
