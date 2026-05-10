@@ -10,7 +10,7 @@ import numpy as np
 from gymnasium import spaces
 import imageio
 
-from inverse_kinematics import MyCobotIK
+from script.inverse_kinematics import MyCobotIK
 
 ARM_JOINT_NAMES = (
     "link2_to_link1",
@@ -52,27 +52,6 @@ def normalize_quat(quat: np.ndarray) -> np.ndarray:
     return quat / norm
 
 
-def quat_multiply(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
-    """
-    Quaternion multiplication.
-    Format quaternion: [w, x, y, z]
-    """
-    w1, x1, y1, z1 = np.asarray(q1, dtype=np.float64)
-    w2, x2, y2, z2 = np.asarray(q2, dtype=np.float64)
-
-    return normalize_quat(
-        np.array(
-            [
-                w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
-                w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
-                w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
-                w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
-            ],
-            dtype=np.float64,
-        )
-    )
-
-
 def quat_from_yaw(yaw: float) -> np.ndarray:
     """
     Quaternion rotasi terhadap sumbu Z dunia.
@@ -91,6 +70,51 @@ def quat_from_yaw(yaw: float) -> np.ndarray:
             dtype=np.float64,
         )
     )
+
+
+def quat_from_euler_xyz(roll: float, pitch: float, yaw: float) -> np.ndarray:
+    """
+    Quaternion dari Euler XYZ.
+    Format quaternion: [w, x, y, z]
+    """
+    cr = np.cos(0.5 * float(roll))
+    sr = np.sin(0.5 * float(roll))
+    cp = np.cos(0.5 * float(pitch))
+    sp = np.sin(0.5 * float(pitch))
+    cy = np.cos(0.5 * float(yaw))
+    sy = np.sin(0.5 * float(yaw))
+
+    return normalize_quat(
+        np.array(
+            [
+                cr * cp * cy + sr * sp * sy,
+                sr * cp * cy - cr * sp * sy,
+                cr * sp * cy + sr * cp * sy,
+                cr * cp * sy - sr * sp * cy,
+            ],
+            dtype=np.float64,
+        )
+    )
+
+
+def euler_xyz_from_quat(quat: np.ndarray) -> np.ndarray:
+    """
+    Euler XYZ dari quaternion [w, x, y, z].
+    """
+    w, x, y, z = normalize_quat(quat)
+
+    sinr_cosp = 2.0 * (w * x + y * z)
+    cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
+    roll = np.arctan2(sinr_cosp, cosr_cosp)
+
+    sinp = 2.0 * (w * y - z * x)
+    pitch = np.arcsin(np.clip(sinp, -1.0, 1.0))
+
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    yaw = np.arctan2(siny_cosp, cosy_cosp)
+
+    return np.array([roll, pitch, yaw], dtype=np.float64)
 
 
 def wrap_to_pi(angle: float) -> float:
@@ -126,7 +150,10 @@ class GraspingEnvIK(gym.Env):
         action[0] = dx end-effector
         action[1] = dy end-effector
         action[2] = dz end-effector
-        action[3] = gripper action
+        action[3] = droll end-effector
+        action[4] = dpitch end-effector
+        action[5] = dyaw end-effector
+        action[6] = gripper action
 
     Reward:
         reward = -distance(EE, object)
@@ -150,14 +177,14 @@ class GraspingEnvIK(gym.Env):
         xml_path: str | Path,
         render_mode: str | None = None,
         max_episode_steps: int = 150,
-        frame_skip: int = 10,
-        action_scale: float = 0.02,
+        frame_skip: int = 5,
+        action_scale: float = 0.01,
         close_distance_threshold: float = 0.04,
         lift_height: float = 0.05,
         success_stable_steps: int = 10,
         reward_weights: RewardWeights | None = None,
         randomize_object: bool = True,
-        yaw_action_scale: float = np.deg2rad(10.0),
+        rotation_action_scale: float = np.deg2rad(10.0),
         randomize_object_yaw: bool = True,
     ) -> None:
         super().__init__()
@@ -239,7 +266,7 @@ class GraspingEnvIK(gym.Env):
             [
                 [0.10, 0.35],  # x min, x max
                 [-0.20, 0.20],  # y min, y max
-                [0.03, 0.35],  # z min, z max
+                [0.01, 0.35],  # z min, z max
             ],
             dtype=np.float64,
         )
@@ -258,11 +285,11 @@ class GraspingEnvIK(gym.Env):
         self.gripper_open_qpos = np.array([0.01, -0.01], dtype=np.float64)
         self.gripper_close_qpos = np.array([-0.02, 0.02], dtype=np.float64)
 
-        # Action: dx, dy, dz, gripper.
+        # Action: dx, dy, dz, droll, dpitch, dyaw, gripper.
         self.action_space = spaces.Box(
             low=-1.0,
             high=1.0,
-            shape=(5,),
+            shape=(7,),
             dtype=np.float32,
         )
 
@@ -277,9 +304,10 @@ class GraspingEnvIK(gym.Env):
         # object_linvel        3
         # relative obj - ee    3
         # gripper_opening      1
-        # sin and cos yaw      2
-        # Total = 35
-        self.obs_dim = 35
+        # ee_quat              4
+        # sin/cos target rpy   6
+        # Total = 43
+        self.obs_dim = 43
         self.observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
@@ -295,16 +323,10 @@ class GraspingEnvIK(gym.Env):
         self.last_ik_error_norm = np.inf
         self.last_target_ee_pos = np.zeros(3, dtype=np.float64)
 
-        self.yaw_action_scale = float(yaw_action_scale)
+        self.rotation_action_scale = float(rotation_action_scale)
         self.randomize_object_yaw = bool(randomize_object_yaw)
 
-        self.use_fixed_down_orientation = True
-        self.fixed_down_quat = np.array(
-            [1.0, 0.0, 0.0, 0.0],
-            dtype=np.float64,
-        )
-
-        self.ee_yaw = 0.0
+        self.ee_rpy = np.zeros(3, dtype=np.float64)
 
     # ============================================================
     # Gymnasium API
@@ -362,17 +384,16 @@ class GraspingEnvIK(gym.Env):
             quat=object_quat,
         )
 
-        # Reset target yaw EE.
-        # Untuk awal boleh 0.0.
-        # Nanti bisa juga di-random jika ingin curriculum lebih sulit.
-        self.ee_yaw = 0.0
-
         # Forward simulation.
         mujoco.mj_forward(self.model, self.data)
 
         # Stabilize sebentar.
         for _ in range(20):
             mujoco.mj_step(self.model, self.data)
+
+        # Target orientasi dimulai dari orientasi EE aktual agar action rotasi
+        # menjadi delta Cartesian, bukan teleport ke orientasi default.
+        self.ee_rpy = euler_xyz_from_quat(self._ee_quat())
 
         self.initial_object_z = float(self._object_pos()[2])
 
@@ -404,10 +425,13 @@ class GraspingEnvIK(gym.Env):
 
         delta_pos = action[:3] * self.action_scale
 
-        delta_yaw = float(action[3]) * self.yaw_action_scale
-        self.ee_yaw = wrap_to_pi(self.ee_yaw + delta_yaw)
+        delta_rpy = action[3:6] * self.rotation_action_scale
+        self.ee_rpy = np.array(
+            [wrap_to_pi(value) for value in self.ee_rpy + delta_rpy],
+            dtype=np.float64,
+        )
 
-        gripper_action = float(action[4])
+        gripper_action = float(action[6])
 
         current_q = self._arm_qpos()
         current_ee_pos = self._ee_pos()
@@ -425,11 +449,7 @@ class GraspingEnvIK(gym.Env):
             target_quat = self._target_ee_quat()
 
             if hasattr(self.ik, "sync_base_from_data"):
-                self.ik.sync_base_from_data(
-                    qpos=self.data.qpos.copy(),
-                    qvel=self.data.qvel.copy(),
-                )
-
+                self.ik.sync_base_from_data(self.data)
             result = self.ik.solve(
                 target_pos=target_ee_pos,
                 target_quat=target_quat,
@@ -454,7 +474,8 @@ class GraspingEnvIK(gym.Env):
                 ik_failed = True
                 q_goal = current_q.copy()
 
-        except Exception:
+        except Exception as exc:
+            print(f"[IK ERROR] {type(exc).__name__}: {exc}")
             ik_failed = True
             self.last_ik_success = False
             self.last_ik_error_norm = np.inf
@@ -623,6 +644,7 @@ class GraspingEnvIK(gym.Env):
         gripper_qvel = self._gripper_qvel()
 
         ee_pos = self._ee_pos()
+        ee_quat = self._ee_quat()
 
         obj_pos = self._object_pos()
         obj_quat = self._object_quat()
@@ -635,10 +657,14 @@ class GraspingEnvIK(gym.Env):
             dtype=np.float64,
         )
 
-        ee_yaw_obs = np.array(
+        ee_rpy_obs = np.array(
             [
-                np.sin(self.ee_yaw),
-                np.cos(self.ee_yaw),
+                np.sin(self.ee_rpy[0]),
+                np.cos(self.ee_rpy[0]),
+                np.sin(self.ee_rpy[1]),
+                np.cos(self.ee_rpy[1]),
+                np.sin(self.ee_rpy[2]),
+                np.cos(self.ee_rpy[2]),
             ],
             dtype=np.float64,
         )
@@ -655,7 +681,8 @@ class GraspingEnvIK(gym.Env):
                 obj_linvel,
                 relative_pos,
                 gripper_opening,
-                ee_yaw_obs,
+                ee_quat,
+                ee_rpy_obs,
             ],
             dtype=np.float64,
         )
@@ -686,6 +713,11 @@ class GraspingEnvIK(gym.Env):
     def _ee_pos(self) -> np.ndarray:
         return self.data.site_xpos[self.ee_site_id].copy()
 
+    def _ee_quat(self) -> np.ndarray:
+        quat = np.zeros(4, dtype=np.float64)
+        mujoco.mju_mat2Quat(quat, self.data.site_xmat[self.ee_site_id])
+        return normalize_quat(quat)
+
     def _object_pos(self) -> np.ndarray:
         return self.data.site_xpos[self.object_site_id].copy()
 
@@ -714,15 +746,13 @@ class GraspingEnvIK(gym.Env):
         Membuat target quaternion EE.
 
         Prinsip:
-        - fixed_down_quat membuat EE menghadap bawah.
-        - yaw_quat memutar EE di sekitar sumbu Z dunia.
-        - Hasil akhirnya: EE tetap menghadap bawah, tapi yaw berubah.
+        - ee_rpy adalah target orientasi Cartesian penuh.
+        - Action rotasi mengubah roll, pitch, yaw secara incremental.
         """
-        yaw_quat = quat_from_yaw(self.ee_yaw)
-
-        target_quat = quat_multiply(
-            yaw_quat,
-            self.fixed_down_quat,
+        target_quat = quat_from_euler_xyz(
+            roll=self.ee_rpy[0],
+            pitch=self.ee_rpy[1],
+            yaw=self.ee_rpy[2],
         )
 
         return normalize_quat(target_quat)

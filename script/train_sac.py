@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 from typing import Callable
@@ -102,14 +101,12 @@ class VideoRecordCallback(BaseCallback):
         xml_path,
         video_dir="videos",
         record_freq=25000,
-        video_length=300,
         verbose=0,
     ):
         super().__init__(verbose)
         self.xml_path = xml_path
         self.video_dir = Path(video_dir)
         self.record_freq = int(record_freq)
-        self.video_length = int(video_length)
         self.video_dir.mkdir(parents=True, exist_ok=True)
 
     def _on_step(self) -> bool:
@@ -119,14 +116,12 @@ class VideoRecordCallback(BaseCallback):
         env = GraspingEnvIK(
             xml_path=self.xml_path,
             render_mode="rgb_array",
-            max_episode_steps=self.video_length,
-            randomize_object=False,
         )
 
         obs, info = env.reset()
         frames = []
 
-        for _ in range(self.video_length):
+        for _ in range(env.max_episode_steps):
             action, _ = self.model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, info = env.step(action)
 
@@ -155,12 +150,6 @@ class VideoRecordCallback(BaseCallback):
 def make_env(
     xml_path: str | Path,
     render_mode: str | None = None,
-    max_episode_steps: int = 150,
-    frame_skip: int = 10,
-    action_scale: float = 0.02,
-    close_distance_threshold: float = 0.04,
-    lift_height: float = 0.05,
-    randomize_object: bool = True,
 ) -> Callable[[], gym.Env]:
     """
     Factory function untuk membuat environment.
@@ -173,12 +162,6 @@ def make_env(
         env = GraspingEnvIK(
             xml_path=xml_path,
             render_mode=render_mode,
-            max_episode_steps=max_episode_steps,
-            frame_skip=frame_skip,
-            action_scale=action_scale,
-            close_distance_threshold=close_distance_threshold,
-            lift_height=lift_height,
-            randomize_object=randomize_object,
         )
 
         env = Monitor(env)
@@ -268,41 +251,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--max-episode-steps",
-        type=int,
-        default=150,
-        help="Maksimum step per episode.",
-    )
-
-    parser.add_argument(
-        "--frame-skip",
-        type=int,
-        default=10,
-        help="Jumlah MuJoCo step untuk setiap 1 action RL.",
-    )
-
-    parser.add_argument(
-        "--action-scale",
-        type=float,
-        default=0.02,
-        help="Maksimum delta posisi EE per step. 0.02 berarti 2 cm.",
-    )
-
-    parser.add_argument(
-        "--close-distance-threshold",
-        type=float,
-        default=0.04,
-        help="Threshold EE dianggap dekat dengan objek. 0.04 berarti 4 cm.",
-    )
-
-    parser.add_argument(
-        "--lift-height",
-        type=float,
-        default=0.05,
-        help="Tinggi minimal objek dianggap berhasil terangkat. 0.05 berarti 5 cm.",
-    )
-
-    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -337,12 +285,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--no-randomize-object",
-        action="store_true",
-        help="Matikan randomisasi posisi objek.",
-    )
-
-    parser.add_argument(
         "--device",
         type=str,
         default="auto",
@@ -356,13 +298,6 @@ def parse_args() -> argparse.Namespace:
 def record_check_env_episode(
     xml_path: str | Path,
     video_path: str | Path = "videos/check_env_record.mp4",
-    steps: int = 300,
-    max_episode_steps: int = 150,
-    frame_skip: int = 10,
-    action_scale: float = 0.02,
-    close_distance_threshold: float = 0.04,
-    lift_height: float = 0.05,
-    randomize_object: bool = True,
     seed: int = 42,
 ) -> None:
     video_path = Path(video_path).expanduser().resolve()
@@ -371,18 +306,12 @@ def record_check_env_episode(
     env = GraspingEnvIK(
         xml_path=xml_path,
         render_mode="rgb_array",
-        max_episode_steps=max_episode_steps,
-        frame_skip=frame_skip,
-        action_scale=action_scale,
-        close_distance_threshold=close_distance_threshold,
-        lift_height=lift_height,
-        randomize_object=randomize_object,
     )
 
     obs, info = env.reset(seed=seed)
     frames = []
 
-    for step_idx in range(int(steps)):
+    for step_idx in range(env.max_episode_steps):
         action = env.action_space.sample()
 
         obs, reward, terminated, truncated, info = env.step(action)
@@ -400,7 +329,7 @@ def record_check_env_episode(
         )
 
         if terminated or truncated:
-            obs, info = env.reset(seed=seed + step_idx + 1)
+            break
 
     env.close()
 
@@ -434,8 +363,6 @@ def main() -> None:
     best_model_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    randomize_object = not args.no_randomize_object
-
     # ------------------------------------------------------------
     # Optional environment check
     # ------------------------------------------------------------
@@ -445,12 +372,6 @@ def main() -> None:
         raw_env = GraspingEnvIK(
             xml_path=xml_path,
             render_mode=None,
-            max_episode_steps=args.max_episode_steps,
-            frame_skip=args.frame_skip,
-            action_scale=args.action_scale,
-            close_distance_threshold=args.close_distance_threshold,
-            lift_height=args.lift_height,
-            randomize_object=randomize_object,
         )
 
         check_env(raw_env, warn=True, skip_render_check=True)
@@ -462,13 +383,6 @@ def main() -> None:
         record_check_env_episode(
             xml_path=xml_path,
             video_path=save_dir / f"{args.run_name}_check_env_record.mp4",
-            steps=args.max_episode_steps,
-            max_episode_steps=args.max_episode_steps,
-            frame_skip=args.frame_skip,
-            action_scale=args.action_scale,
-            close_distance_threshold=args.close_distance_threshold,
-            lift_height=args.lift_height,
-            randomize_object=randomize_object,
             seed=args.seed,
         )
     # ------------------------------------------------------------
@@ -480,12 +394,6 @@ def main() -> None:
             make_env(
                 xml_path=xml_path,
                 render_mode=None,
-                max_episode_steps=args.max_episode_steps,
-                frame_skip=args.frame_skip,
-                action_scale=args.action_scale,
-                close_distance_threshold=args.close_distance_threshold,
-                lift_height=args.lift_height,
-                randomize_object=randomize_object,
             )
         ]
     )
@@ -500,12 +408,6 @@ def main() -> None:
             make_env(
                 xml_path=xml_path,
                 render_mode=None,
-                max_episode_steps=args.max_episode_steps,
-                frame_skip=args.frame_skip,
-                action_scale=args.action_scale,
-                close_distance_threshold=args.close_distance_threshold,
-                lift_height=args.lift_height,
-                randomize_object=randomize_object,
             )
         ]
     )
@@ -547,12 +449,11 @@ def main() -> None:
         xml_path=xml_path,
         video_dir=save_dir / f"{args.run_name}_videos",
         record_freq=25_000,
-        video_length=300,
         verbose=1,
     )
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=25_000,
+        save_freq=100_000,
         save_path=str(checkpoint_dir),
         name_prefix=args.run_name,
         save_replay_buffer=True,
@@ -584,10 +485,6 @@ def main() -> None:
     print(f"[INFO] Total timesteps     : {args.total_timesteps}")
     print(f"[INFO] Log dir             : {log_dir}")
     print(f"[INFO] Save dir            : {save_dir}")
-    print(f"[INFO] Randomize object    : {randomize_object}")
-    print(f"[INFO] Action scale        : {args.action_scale}")
-    print(f"[INFO] Close threshold     : {args.close_distance_threshold}")
-    print(f"[INFO] Lift height         : {args.lift_height}")
 
     model.learn(
         total_timesteps=args.total_timesteps,
